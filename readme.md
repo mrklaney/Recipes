@@ -11,7 +11,7 @@ The original dataset can be downloaded from https://www.kaggle.com/datasets/nguy
 There are duplicate entries in this original file. I built a python script to deduplicate them.
 The script is in the project folder and is called dedupecsv.py.  The deduplicated result file is called allrecipes_2.csv, which is also in the project file.
 
-In order to run the dedupecsv.py some python libraries are required. As preferred by many data science practitioners, I use Conda to create environments to isolate and run python projects.  
+In order to run the dedupecsv.py some python libraries, numpy and pandas, are required. Conda was used to create environments to isolate and run python projects.  
 conda install anaconda::numpy
 conda install anaconda::pandas
 
