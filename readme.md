@@ -11,14 +11,16 @@ The original dataset can be downloaded from https://www.kaggle.com/datasets/nguy
 There are duplicate entries in this original file. I built a python script to deduplicate them.
 The script is in the project folder and is called dedupecsv.py.  The deduplicated result file is called allrecipes_2.csv, which is also in the project file.
 
-In order to run the dedupecsv.py some python libraries, numpy and pandas, are required. Conda was used to create environments to isolate and run python projects.  
+In order to run the dedupecsv.py some python libraries, numpy and pandas, are required. Conda was used to create environments to isolate and run python projects:
+
 conda install anaconda::numpy
+
 conda install anaconda::pandas
 
-Filebeat was used to ingest allrecipes_2.csv into Elasticsearch. The configuration file is filebeat.yml aand a copy is in the project folder. I followed the "quick install" documentation https://www.elastic.co/guide/en/beats/filebeat/8.11/filebeat-installation-configuration.html to install and use filebeat with version 8.11.4 for Linux self-managed. 
-Need to scp to Strigo both filebeat.yml and allrecipes_2.csv.
+Filebeat was used to ingest allrecipes_2.csv into Elasticsearch. The configuration file is filebeat.yml and a copy is in the project folder. I followed the "quick install" documentation https://www.elastic.co/guide/en/beats/filebeat/8.11/filebeat-installation-configuration.html to install and use filebeat with version 8.11.4 for Linux self-managed. 
+You will need to SCP to Strigo both filebeat.yml and allrecipes_2.csv.
 
-Running filebeat creates an index called "recipes."
+Running filebeat creates an Elasticsearch index called "recipes."
 
 
 
