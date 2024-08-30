@@ -1,6 +1,6 @@
 Title: ESRE RAG from Vestal Vector book using Recipes index
 
-Explanation:  RAG application using Elasticsearch and ELSER v2. Has good examples of how a RAG app can enhance search results.
+Explanation:  RAG application using Elasticsearch and ELSER v2. Has good examples of how RAG can enhance search results.
 
 Installation: Strigo using ESRE Engineer V2. 
 The dataset being used are recipes from Kaggle. I checked and see that this particular dataset is under an open license. 
@@ -10,10 +10,7 @@ The original dataset can be downloaded from https://www.kaggle.com/datasets/nguy
 (page 173 of Vestal) and is called allrecipes.csv. It is included in the project file.
 There are duplicate entries in this original file. I built a python script to deduplicate them.
 The script is in the project folder and is called dedupecsv.py.  The deduplicated result file is called allrecipes_2.csv, which is also in the project file.
-
-In order to run the dedupecsv.py some python libraries, numpy and pandas, are required. Conda was used to create environments to isolate and run python projects:            <br />
-conda install anaconda::numpy   <br />
-conda install anaconda::pandas
+If you want to run the dedupecsv.py yourself, the python library numpy needs to be installed. (e.g. conda install numpy)
 
 Filebeat was used to ingest allrecipes_2.csv into Elasticsearch. The configuration file is filebeat.yml and a copy is in the project folder. I followed the "quick install" documentation https://www.elastic.co/guide/en/beats/filebeat/8.11/filebeat-installation-configuration.html to install and use filebeat with version 8.11.4 for Linux self-managed. 
 You will need to SCP to Strigo both filebeat.yml and allrecipes_2.csv.
