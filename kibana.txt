@@ -1,0 +1,961 @@
+# Verify the recipe index is on the cluster
+GET recipes/_count
+#or
+GET _cat/indices?v&s=index
+# It should have 5867 documents
+
+
+
+
+# Start a deployment of the x86 model for inference. One allocation and four threads.  Call the model elser_model
+
+POST _ml/trained_models/.elser_model_2_linux-x86_64/deployment/_start?deployment_id=elser_model&number_of_allocations=1&threads_per_allocation=4
+
+POST _ml/trained_models/elser_model/deployment/_stop
+#if a pipeline is calling the model
+POST _ml/trained_models/elser_model/deployment/_stop?force=true
+
+#make sure the model is in a started state
+
+GET _ml/trained_models/_stats/
+GET _ml/trained_models/_stats?filter_path=trained_model_stats.deployment_stats
+
+
+# Explore the recipes index
+
+GET recipes/_search
+
+GET recipes/_mapping
+
+
+
+#need improved mapping
+#for example 
+GET recipes/_search?filter_path=hits.hits._source.id
+
+#all the IDs are integers, but the mapping is text/keyword
+#english for summary
+#ml.token sparse vector for embeddings
+
+#DELETE recipes_embeddings
+
+PUT recipes_embeddings
+{
+  "mappings": {
+    "properties": {
+      "id": {
+        "type": "long"
+      },
+      "group": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "ingredient": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "n_rater": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "n_reviewer": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "process": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "rating": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "summary": {
+        "type": "text",
+        "analyzer": "english",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 256
+          }
+        }
+      },
+      "ml.tokens": {
+        "type": "sparse_vector"
+      }
+    }
+  }
+}
+
+
+
+#document clean up
+
+#ingredient field has docs with triple quotes
+GET recipes/_search
+{
+  "_source": false,
+  "fields": ["ingredient"], 
+  "query": {
+    "regexp": {
+      "ingredient.keyword": "(.*?)"
+    }
+  }
+}
+
+
+##### Create an ingest node pipeline to replace the triple quotes with single quotes. ###
+
+PUT _ingest/pipeline/triplequotes
+{
+  "processors": [
+    {
+      "gsub": {
+        "field": "ingredient",
+        "pattern": """"(.*?)""",
+        "replacement": "'"
+      }}]}
+
+# unit test  
+POST _ingest/pipeline/triplequotes/_simulate
+{
+  "docs": [
+    {
+      "_index": "recipes",
+      "_id": "id",
+      "_source": {
+        "ingredient": """shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)""",
+        "tags": 2342
+      }
+    }
+  ]
+}
+
+
+# Create a pipeline to apply inference using the ELSER model. Recall the name of our deployment is  elser_model
+PUT _ingest/pipeline/elser_clean_recipes
+{
+  "processors": [
+    {
+      "pipeline": {
+        "name": "triplequotes"
+
+      },
+      "inference": {
+        "model_id": "elser_model",
+        "target_field": "ml",
+        "field_map": {
+          "ingredient": "text_field"
+        },
+        "inference_config": {
+          "text_expansion": {
+            "results_field": "tokens"
+          }
+        }
+      }
+    }
+  ]
+}
+
+POST _ingest/pipeline/elser_clean_recipes/_simulate
+{
+  "docs": [
+    {
+      "_index": "recipes",
+      "_id": "id",
+      "_source": {
+        "ingredient": """prep: 20 mins,cook: 20 mins,total: 40 mins,Servings: 4,Yield: 4 servings","½ small onion, chopped + ½ tomato, chopped + 1 jalapeno pepper, seeded and minced + 1 sprig fresh cilantro, chopped + 6 eggs, beaten + 4 (10 inch) flour tortillas + 2 cups shredded Cheddar cheese + ¼ cup sour cream, for topping + ¼ cup guacamole, for topping""",
+        "tags": 2342
+      }
+    },
+     {
+      "_index": "recipes",
+      "_id": "id",
+      "_source": {
+        "ingredient":
+    """shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)"""
+      }},
+      {"_index": "recipes",
+      "_id": "id",
+      "_source": {  
+        "ingredient": """shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)"""}}
+  ]
+}
+
+
+#WARNING = takes approximately 25-30 minutes
+
+#reindex recipes into an index called recipes_embeddings
+# Be sure to copy the task number 
+POST _reindex?wait_for_completion=false&requests_per_second=-1&timeout=60m
+{
+  "conflicts": "proceed", 
+  "source": {
+    "index": "recipes",
+    "size": 500
+  },
+  "dest": {
+    "index": "recipes_embeddings",
+    "pipeline": "elser_clean_recipes"
+  }
+}
+
+
+#use the task number to track process of the reindex
+
+GET _tasks/< paste task number here >
+
+GET _tasks/bjf5MiiuSFq9u4mkNkvi0A:4734595
+
+
+
+#DELETE recipes_embeddings
+
+#examine
+
+GET _cat/indices?s=i
+
+GET recipes_embeddings/_search
+#ml field makes this awkward
+
+GET recipes_embeddings/_search
+{ "_source": { "excludes": "ml"} }
+
+GET recipes_embeddings/_count
+#5867 documents
+
+#finding the "groups" to query
+GET recipes_embeddings/_search?size=0
+{
+  "aggs": {
+    "all the groups": {
+      "terms": {
+        "field": "group.keyword",
+        "size": 200
+      }
+    }
+  }
+}
+#how many buckets are there?
+GET recipes_embeddings/_search
+{
+  "size": 0, 
+  "aggs": {
+    "how many buckets": {
+      "cardinality": {
+        "field": "group.keyword",
+        "precision_threshold": 200
+      }
+    }
+  }
+}
+#175 buckets
+
+
+GET recipes_embeddings/_search?size=1000&_source=group
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### searches ####
+
+
+
+
+#Old Fashioned -  bourbon cocktail
+/*
+    1. Add one or two cherries to an old Old Fashioned glass and lightly mash with a muddler.
+    2. Take orange peel and rub around the inside of the glass rim, then add peel to the cherries.
+    3. Add ice cubes, rye whiskey, simple sugar, and bitters.
+    4. Stir to combine and serve.
+*/
+
+
+
+#without ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml", "includes": ["name","group","summary"]},
+  "query": {
+    "bool": {
+      "should": [ { "wildcard": { "group": {"value": "drinks*" }}},
+        {
+          "multi_match": {
+            "type": "phrase", 
+            "query": "old fashion",
+            "fields": [
+              "summary",
+              "name"
+            ]
+          }
+        },
+        {
+          "match": {
+            "summary": "delicious sensational"
+          }
+        }
+      ]
+    }
+  }
+}
+#pretty bad results in top 10
+# none are drinks (even though we searched the drinks* group)
+
+
+
+#with ELSER - excellent results!
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml",
+    "includes": [ "name",  "group",   "summary" , "ingredient"]
+  },
+  "sub_searches": [
+    {
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "wildcard": {
+                "group": {"value": "drinks*"}}},
+            {
+              "multi_match": {
+                "query": "old fashioned",
+                "type": "phrase",
+                "fields": [
+                  "summary",
+                  "name" ]}} ] }}},
+    {
+      "query": {
+        "text_expansion": {
+          "ml.tokens": {
+            "model_id": "elser_model",
+            "model_text": "old fashioned bourbon whiskey whisky drink"
+          }
+        }
+      }
+    }
+  ],
+  "rank": {
+    "rrf": {
+      "window_size": 500,
+      "rank_constant": 60
+    }
+  }
+}
+#all are alcoholic drinks starting with Old Fashion
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Shrimp dishes
+
+
+#without ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml"
+  },
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "wildcard": {
+            "group": {
+              "value": "main*"
+            }
+          }
+        },
+        {
+          "multi_match": {
+            "type": "phrase", 
+            "query": "tempura shrimp",
+            "fields": [
+              "ingredient",
+              "name^2"
+            ]
+          }
+        },
+        {
+          "match": {
+            "summary": "tasty delightful"
+          }
+        }
+      ]
+    }
+  }
+}
+#pretty bad results in the top 5: port tenderloin, Spanish sauce, carrot salad, .... 
+
+#with ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml"
+  },
+  "sub_searches": [
+    {
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "wildcard": {
+                "group": {
+                  "value": "main*"
+                }
+              }
+            },
+            {
+              "multi_match": {
+                "query": "tempura shrimp",
+                "type":"phrase",
+                "fields": [
+                  "ingredient",
+                  "name^2"
+                ]
+              }
+            },
+            {
+              "match": {
+                "summary": "tasty delightful"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "query": {
+        "text_expansion": {
+          "ml.tokens": {
+            "model_id": "elser_model",
+            "model_text": "main tempura shrimp tasty delightful"
+          }
+        }
+      }
+    }
+  ],
+  "rank": {
+    "rrf": {
+      "window_size": 500,
+      "rank_constant": 60
+    }
+  }
+}
+#much better in the top 5:  Shrimp with Pasta, Shrimp Scampi, Penne with Shrimp, 
+
+
+
+
+
+
+
+# Spaghetti dishes
+
+#without ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml"
+  },
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "wildcard": {
+            "group": {
+              "value": "main*"
+            }
+          }
+        },
+        {
+          "multi_match": {
+            "type": "phrase", 
+            "query": "Spaghetti Bolognese",
+            "fields": [
+              "ingredient",
+              "name^2"
+            ]
+          }
+        },
+        {
+          "match": {
+            "summary": "tasty delightful"
+          }
+        }
+      ]
+    }
+  }
+}
+# bad again in top 5: pork tenderloin, Med. sauce, carrot salad, lime chicken, ...
+
+#with ELSER
+GET recipes_embeddings/_search?filter_path=hits.hits._source
+{
+  "_source": {
+    "excludes": "ml"
+  },
+  "sub_searches": [
+    {
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "wildcard": {
+                "group": {
+                  "value": "main*"
+                }
+              }
+            },
+            {
+              "multi_match": {
+                "query": "Spaghetti Bolognese",
+                "type":"phrase",
+                "fields": [
+                  "ingredient",
+                  "name^2"
+                ]
+              }
+            },
+            {
+              "match": {
+                "summary": "tasty delightful"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "query": {
+        "text_expansion": {
+          "ml.tokens": {
+            "model_id": "elser_model",
+            "model_text": "main Spaghetti Bolognese"
+          }
+        }
+      }
+    }
+  ],
+  "rank": {
+    "rrf": {
+      "window_size": 500,
+      "rank_constant": 60
+    }
+  }
+}
+# much improved again with top 4 of 5: Penne with Shrimp (at least it's pasta), rice noodles, Spaghetti with Corned Beef, Spaghetti Aglio e Olio
+
+
+
+
+
+
+
+# Chocolate
+
+
+#without ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {"excludes": "ml"},
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "match": {
+            "name": "dessert"
+          }
+        },
+        {
+          "match": {
+            "ingredient": "chocolate"
+          }
+        },
+        {
+          "match": {
+            "summary": "tasty delightful"
+          }
+        }
+      ]
+    }
+  }
+}
+# shake and crepes...?
+
+#with ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {"excludes": "ml"}, 
+  "sub_searches": [
+    {
+      "query": {
+        "bool": {
+          "should": [
+             {
+              "match": {
+                "name": "dessert"
+              }
+            },
+            {
+              "match": {
+                "ingredient": "chocolate"
+              }
+            },
+            {
+              "match": {
+                "summary": "tasty delightful"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "query": {
+        "text_expansion": {
+          "ml.tokens": {
+            "model_id": "elser_model",
+            "model_text": "dessert chocolate"
+          }
+        }
+      }
+    }
+  ],
+  "rank": {
+    "rrf": {
+      "window_size": 50,
+      "rank_constant": 20
+    }
+  }
+}
+# peppermint bark (obscure term for chocolate), 
+#Nanaimo bars (chocolate topped cookie), hot chocolate, chocolate muffins, cake balls ingredient includes chocolate cake, Oreo truffles, etc
+
+
+
+
+
+
+
+
+
+#Again, finding the "groups" to query
+GET recipes_embeddings/_search?size=0
+{
+  "aggs": {
+    "all the groups": {
+      "terms": {
+        "field": "group.keyword",
+        "size": 200
+      }
+    }
+  }
+}
+
+#How many recipes in everyday-cooking* ?
+GET recipes_embeddings/_count
+{
+  "query": {
+    "wildcard": {
+      "group.keyword": {
+        "value": "everyday-cooking*"
+      }
+    }
+  }
+}
+#524
+
+
+#look for "Fish Sandwich"   in everyday-cooking*
+
+
+#without ELSER
+#how many fish sandwich recipes in everyday-cooking?
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml"
+  },
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "wildcard": {
+            "group": {
+              "value": "everyday-cooking*"
+            }
+          }
+        },
+        {
+          "multi_match": {
+            "type": "phrase", 
+            "query": "fish sandwich",
+            "fields": [
+              "ingredient",
+              "name^2"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+# None!
+#wow, no hits at all...?
+
+#add embedding search with ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml"
+  },
+  "sub_searches": [
+    {
+      "query": {
+        "bool": {
+          "should": [
+            {
+              "wildcard": {
+                "group": {
+                  "value": "everyday-cooking*"
+                }
+              }
+            },
+            {
+              "multi_match": {
+                "query": "fish sandwich",
+                "type":"phrase",
+                "fields": [
+                  "ingredient",
+                  "name^2"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "query": {
+        "text_expansion": {
+          "ml.tokens": {
+            "model_id": "elser_model",
+            "model_text": "fish sandwich"
+          }
+        }
+      }
+    }
+  ],
+  "rank": {
+    "rrf": {
+      "window_size": 500,
+      "rank_constant": 60
+    }
+  }
+}
+
+#do a "find" on the right-hand-side for "sandwich". So many!
+# tuna patties, tuna salads, Vietnamese Baguette (fish sauce), Catfish Po Boy!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#How many recipes in the "Main" category?
+
+
+GET recipes_embeddings/_search
+{
+  "_source": {"excludes": "ml"},
+  "query": {"bool": { 
+    "must": [{"match": { "group": "main*" }} ] }}}
+#532
+
+
+
+
+
+
+
+#Tenderloin Steak
+
+
+#note that in the USA we say "tenderloins steaks" but they  are called Chateaubriand in France.  
+#note that Chateaubriand is not in any recipe
+#multi_match can be used to search every field like this
+GET recipes_embeddings/_search
+{
+  "query": {
+    "multi_match": {
+      "query": "Chateaubriand"
+    }
+  }
+}
+#zero results
+
+
+# without ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml", "includes": ["name","group","summary"]},
+  "query": {
+    "bool": {
+      "should": [ { "wildcard": { "group": {"value": "main*" }}},
+        {
+          "multi_match": {
+            //"type": "phrase", 
+            "query": "tenderloin steak salt pepper",
+            "fields": [
+              "ingredient",
+              "name^2"
+            ]
+          }
+        },
+        {
+          "match": {
+            "summary": "delicious Chateaubriand"
+          }
+        },
+        {
+          "match": {
+            "ingredient": "beef"
+          }
+        }
+      ]
+    }
+  }
+}
+#pretty bad results in the top 10
+# salt and pepper fries, salt bread, Pork Tenderloin
+
+
+
+#with ELSER
+GET recipes_embeddings/_search
+{
+  "_source": {
+    "excludes": "ml", "includes": ["name","group","summary"]},
+    "sub_searches": [
+      {
+        "query": {
+          "bool": {
+            "should": [
+              {
+                "wildcard": {
+                  "group": {
+                    "value": "main*"
+                  }
+                }
+              },
+              {
+                "multi_match": {
+                  "query": "tenderloin steak Chateaubriand beef",
+                  //"type":"phrase",
+                  "fields": [
+                    "ingredient",
+                    "name^2"
+                    ]
+                }
+              },
+              {"match":{
+                "ingredient":{
+                  "query": "beef"
+                }
+              }}
+              ]
+          }
+        }
+      },
+      {
+        "query": {
+          "text_expansion": {
+            "ml.tokens": {
+              "model_id": "elser_model",
+              "model_text": "tenderloin steak Chateaubriand beef"
+            }
+          }
+        }
+      }
+      ],
+      "rank": {
+        "rrf": {
+          "window_size": 500,
+          "rank_constant": 60
+        }
+      }
+}
+# A lot more actual steaks.
+ 
