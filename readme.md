@@ -10,7 +10,7 @@ The original dataset can be downloaded from https://www.kaggle.com/datasets/nguy
 (page 173 of Vestal) and is called allrecipes.csv. It is included in the project file.
 There are duplicate entries in this original file. I built a python script to deduplicate them.
 The script is in the project folder and is called dedupecsv.py.  The deduplicated result file is called allrecipes_2.csv, which is also in the project file.
-If you want to run the dedupecsv.py yourself, the python library numpy needs to be installed. (e.g. conda install numpy)
+If you want to run the dedupecsv.py yourself, the python library pandas needs to be installed. (e.g. pip install pandas)
 
 Filebeat was used to ingest allrecipes_2.csv into Elasticsearch. The configuration file is filebeat.yml and a copy is in the project folder. I followed the "quick install" documentation https://www.elastic.co/guide/en/beats/filebeat/8.11/filebeat-installation-configuration.html to install and use filebeat with version 8.11.4 for Linux self-managed. 
 You will need to SCP to Strigo both filebeat.yml and allrecipes_2.csv.
