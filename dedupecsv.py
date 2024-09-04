@@ -6,7 +6,7 @@ df = pd.read_csv('allrecipes.csv', encoding='latin1')
 
 
 # !!!! this is the main line:    Drop duplicates based on a particular column, ingredient
-result = df.drop_duplicates(keep='first')
+result = df.drop_duplicates(['ingredient'],keep='first') 
 print('Result DataFrame:\n', result)
 
 #write the csv file
