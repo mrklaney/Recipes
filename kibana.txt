@@ -2,9 +2,7 @@
 GET recipes/_count
 #or
 GET _cat/indices?v&s=index
-# It should have 5867 documents
-
-
+# It should have 4807 documents
 
 
 # Start a deployment of the x86 model for inference. One allocation and four threads.  Call the model elser_model
@@ -33,9 +31,9 @@ GET recipes/_mapping
 #for example 
 GET recipes/_search?filter_path=hits.hits._source.id
 
-#all the IDs are integers, but the mapping is text/keyword
-#english for summary
-#ml.token sparse vector for embeddings
+# Notice that the IDs are integers.  But the current mapping has text/keyword.
+# We are also going to add the English analyzer in the mapping for the summary field.
+# Finally we will create an ml.token sparse vector to hold the embeddings.
 
 #DELETE recipes_embeddings
 
@@ -222,7 +220,9 @@ POST _ingest/pipeline/elser_clean_recipes/_simulate
 }
 
 
-#WARNING = takes approximately 25-30 minutes
+GET _cat/indices?s=i
+
+#WARNING = the next step takes approximately 25-35 minutes
 
 #reindex recipes into an index called recipes_embeddings
 # Be sure to copy the task number 
@@ -244,8 +244,9 @@ POST _reindex?wait_for_completion=false&requests_per_second=-1&timeout=60m
 
 GET _tasks/< paste task number here >
 
-GET _tasks/bjf5MiiuSFq9u4mkNkvi0A:4734595
+GET _tasks/bjf5MiiuSFq9u4mkNkvi0A:9094102
 
+#You can monitor documents processed under Kibana -> Machine Learning -> Trained Models -> .elser_model_2_linux-x86_64 -> open carat  ->  Stats  -> Inference count
 
 
 #DELETE recipes_embeddings
@@ -255,15 +256,15 @@ GET _tasks/bjf5MiiuSFq9u4mkNkvi0A:4734595
 GET _cat/indices?s=i
 
 GET recipes_embeddings/_search
-#ml field makes this awkward
+#ml field makes this difficult to examine
 
 GET recipes_embeddings/_search
 { "_source": { "excludes": "ml"} }
 
 GET recipes_embeddings/_count
-#5867 documents
+#4807 documents
 
-#finding the "groups" to query
+#finding the "groups" of recipes to query
 GET recipes_embeddings/_search?size=0
 {
   "aggs": {
@@ -275,7 +276,7 @@ GET recipes_embeddings/_search?size=0
     }
   }
 }
-#how many buckets are there?
+#how many buckets of groups are there?
 GET recipes_embeddings/_search
 {
   "size": 0, 
@@ -288,9 +289,10 @@ GET recipes_embeddings/_search
     }
   }
 }
-#175 buckets
+#174 buckets
 
 
+#A way to just look at the group field for each document
 GET recipes_embeddings/_search?size=1000&_source=group
 
 
@@ -310,9 +312,11 @@ GET recipes_embeddings/_search?size=1000&_source=group
 
 
 
+#Let's run queries for certain recipes with ELSER and without ELSER to compare results. 
+
 
 #Old Fashioned -  bourbon cocktail
-/*
+/*   -- Old Fashioned Recipe --
     1. Add one or two cherries to an old Old Fashioned glass and lightly mash with a muddler.
     2. Take orange peel and rub around the inside of the glass rim, then add peel to the cherries.
     3. Add ice cubes, rye whiskey, simple sugar, and bitters.
@@ -322,6 +326,8 @@ GET recipes_embeddings/_search?size=1000&_source=group
 
 
 #without ELSER
+# searching for "old fashion" in either the summary or name fields. Also to find the good recipes, looking for "delicious" or "sensational" in summary field.
+
 GET recipes_embeddings/_search
 {
   "_source": {
@@ -348,12 +354,14 @@ GET recipes_embeddings/_search
     }
   }
 }
-#pretty bad results in top 10
-# none are drinks (even though we searched the drinks* group)
+
+# If we look at the "hits" array, there are some pretty bad results in top 10. 
+# None are even drinks (even though we searched the drinks* group). Instead, we see a lot of recipes that use the phrase "old fashioned" with a little different meaning than what we were thinking (like old-fashion peach cobbler, for example).
 
 
 
-#with ELSER - excellent results!
+#with ELSER - Excellent results!
+
 GET recipes_embeddings/_search
 {
   "_source": {
@@ -393,7 +401,7 @@ GET recipes_embeddings/_search
     }
   }
 }
-#all are alcoholic drinks starting with Old Fashion
+#All are alcoholic drinks starting with an actual Old Fashion cocktail beverage. 
 
 
 
@@ -502,7 +510,7 @@ GET recipes_embeddings/_search
     }
   }
 }
-#much better in the top 5:  Shrimp with Pasta, Shrimp Scampi, Penne with Shrimp, 
+#much better results including:  Shrimp with Pasta, Shrimp Scampi, Penne with Shrimp, and Prawns Fried.   Notice nowhere in our searches did we specify "prawns."
 
 
 
@@ -548,6 +556,7 @@ GET recipes_embeddings/_search
   }
 }
 # bad again in top 5: pork tenderloin, Med. sauce, carrot salad, lime chicken, ...
+
 
 #with ELSER
 GET recipes_embeddings/_search?filter_path=hits.hits._source
@@ -604,7 +613,8 @@ GET recipes_embeddings/_search?filter_path=hits.hits._source
     }
   }
 }
-# much improved again with top 4 of 5: Penne with Shrimp (at least it's pasta), rice noodles, Spaghetti with Corned Beef, Spaghetti Aglio e Olio
+# much improved again among the top hits: Penne with Shrimp (at least it's pasta - we did not specify penne), rice noodles, Spaghetti with Corned Beef, Spaghetti Aglio e Olio
+
 
 
 
@@ -641,7 +651,8 @@ GET recipes_embeddings/_search
     }
   }
 }
-# shake and crepes...?
+# shakes,  Pistachios, banana bread, and crepes...? meh
+
 
 #with ELSER
 GET recipes_embeddings/_search
@@ -690,7 +701,8 @@ GET recipes_embeddings/_search
   }
 }
 # peppermint bark (obscure term for chocolate), 
-#Nanaimo bars (chocolate topped cookie), hot chocolate, chocolate muffins, cake balls ingredient includes chocolate cake, Oreo truffles, etc
+# Nanaimo bars (chocolate topped cookie), hot chocolate, chocolate muffins, cake balls where ingredient includes chocolate cake, Oreo truffles...    
+#Much improved results!
 
 
 
@@ -724,11 +736,10 @@ GET recipes_embeddings/_count
     }
   }
 }
-#524
+#310
 
 
 #look for "Fish Sandwich"   in everyday-cooking*
-
 
 #without ELSER
 #how many fish sandwich recipes in everyday-cooking?
@@ -762,7 +773,8 @@ GET recipes_embeddings/_search
   }
 }
 # None!
-#wow, no hits at all...?
+#wow, no hits at all for 'fish sandwich'...?
+
 
 #add embedding search with ELSER
 GET recipes_embeddings/_search
@@ -816,7 +828,7 @@ GET recipes_embeddings/_search
 }
 
 #do a "find" on the right-hand-side for "sandwich". So many!
-# tuna patties, tuna salads, Vietnamese Baguette (fish sauce), Catfish Po Boy!
+# tuna patties, tuna salads,  even a Vietnamese Baguette (fish sauce), and a Catfish Po Boy!
 
 
 
@@ -841,7 +853,7 @@ GET recipes_embeddings/_search
   "_source": {"excludes": "ml"},
   "query": {"bool": { 
     "must": [{"match": { "group": "main*" }} ] }}}
-#532
+#458
 
 
 
@@ -959,3 +971,17 @@ GET recipes_embeddings/_search
 }
 # A lot more actual steaks.
  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
