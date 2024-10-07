@@ -2,8 +2,8 @@ Title: ESRE RAG from Vestal Vector book using Recipes index
 
 Explanation:  RAG application using Elasticsearch and ELSER v2. Has good examples of how RAG can enhance search results.
 
-Installation: Strigo using ESRE Engineer V2. 
-The dataset being used are recipes from Kaggle. I checked and see that this particular dataset is under an open license. 
+Installation was done on Strigo using the ESRE Engineer V2 AMI. (However, it is easy to install on a local machine as well.)
+The dataset being used are recipes from Kaggle. I checked to see that this particular dataset is under an open license. 
 I used filebeat to ingest the data. Why? File Uploader continues to fail and still does with this version of Elastic stack.(version 8.11.0)
 
 The original dataset can be downloaded from https://www.kaggle.com/datasets/nguyentuongquang/all-recipes
