@@ -1,28 +1,48 @@
+
+GET _cat/indices?s=i
+
+DELETE recipes_embeddings
+DELETE recipes
+
+
+
+
+
+
+
+##################
+
+
 # Verify the recipe index is on the cluster
 GET recipes/_count
-#or
+#and/or
 GET _cat/indices?v&s=index
-# It should have 4807 documents
+# It should have 4808 documents
 
 
-# Start a deployment of the x86 model for inference. One allocation and four threads.  Call the model elser_model
+#in Kibana UI download Elser x86 model
+#for mac download regular .elser_model_2
 
-POST _ml/trained_models/.elser_model_2_linux-x86_64/deployment/_start?deployment_id=elser_model&number_of_allocations=1&threads_per_allocation=4
+# Start a deployment of that model for inference. One allocation and four threads.  Call the model elser_model
+#for linux with x86 chip
+/*POST _ml/trained_models/.elser_model_2_linux-x86_64/deployment/_start?deployment_id=elser_model&number_of_allocations=1&threads_per_allocation=4  */
+#or
+#for Mac
+POST _ml/trained_models/.elser_model_2/deployment/_start?deployment_id=elser_model&number_of_allocations=1&threads_per_allocation=4
 
-POST _ml/trained_models/elser_model/deployment/_stop
+#to start and stop the model can do
+#POST _ml/trained_models/elser_model/deployment/_stop
 #if a pipeline is calling the model
 POST _ml/trained_models/elser_model/deployment/_stop?force=true
 
 #make sure the model is in a started state
-
 GET _ml/trained_models/_stats/
-GET _ml/trained_models/_stats?filter_path=trained_model_stats.deployment_stats
+GET _ml/trained_models/_stats?filter_path=trained_model_stats.deployment_stats.state
 
 
 # Explore the recipes index
-
 GET recipes/_search
-
+GET recipes/_count
 GET recipes/_mapping
 
 
@@ -31,9 +51,9 @@ GET recipes/_mapping
 #for example 
 GET recipes/_search?filter_path=hits.hits._source.id
 
-# Notice that the IDs are integers.  But the current mapping has text/keyword.
-# We are also going to add the English analyzer in the mapping for the summary field.
-# Finally we will create an ml.token sparse vector to hold the embeddings.
+#Notice all the IDs are integers, but the mapping is text/keyword
+#Also need the english analyzer for the 'summary' field
+#Also need ml.token as a sparse vector for our vector embeddings
 
 #DELETE recipes_embeddings
 
@@ -42,7 +62,7 @@ PUT recipes_embeddings
   "mappings": {
     "properties": {
       "id": {
-        "type": "long"
+        "type": "short"
       },
       "group": {
         "type": "text",
@@ -125,14 +145,18 @@ PUT recipes_embeddings
 }
 
 
+GET recipes/_search
+{
+  "size": 2000,
+  "_source": ["ingredient"]
+}
 
 #document clean up
 
 #ingredient field has docs with triple quotes
-GET recipes/_search
+GET recipes/_search?size=2000
 {
-  "_source": false,
-  "fields": ["ingredient"], 
+  "_source": ["ingredient"], 
   "query": {
     "regexp": {
       "ingredient.keyword": "(.*?)"
@@ -140,21 +164,83 @@ GET recipes/_search
   }
 }
 
+POST _analyze
+{
+  "text": """1 teaspoon salted butter, or to taste + 5 small (4" long)s banana peppers, chopped + 3 peppers red chile peppers, chopped + 1 medium tomato, diced + ½ medium onion, diced + ½ cup cooked ground beef + salt and ground black pepper to taste + 3 large eggs + 5 (8 inch) flour tortillas + ½ cup shredded Cheddar cheese, or to taste + ¼ cup sour cream, or to taste"""
+}
+
+GET recipes/_search?size=2000
+{
+  "_source": ["ingredient"], 
+  "query": {
+    "regexp": {
+      "ingredient.keyword": "(^[^\"]+\"[^\"]+\"[^\"]+\"[^\"]+$)"
+    }
+  }
+}
+GET recipes/_search?size=2000
+{
+  "_source": ["ingredient"], 
+  "query": {
+    "regexp": {
+      "ingredient.keyword": "(^[\"])"
+    }
+  }
+}
+
+GET recipes/_search?size=2000
+
+GET recipes/_search?size=2000
+{
+  "_source": ["ingredient.keyword"]
+}
+
+GET recipes
+
+GET recipes/_search?size=2000
+{
+  "_source": ["ingredient"], 
+  "query": {
+    "match_phrase": {
+      "ingredient.keyword": """1 teaspoon salted butter, or to taste + 5 small (4" long)s banana peppers, chopped + 3 peppers red chile peppers, chopped + 1 medium tomato, diced + ½ medium onion, diced + ½ cup cooked ground beef + salt and ground black pepper to taste + 3 large eggs + 5 (8 inch) flour tortillas + ½ cup shredded Cheddar cheese, or to taste + ¼ cup sour cream, or to taste"""
+    }
+  }
+}
+
+GET recipes/_search?size=2000
+{
+  "_source": ["ingredient"], 
+  "query": {
+    "regexp": {
+      "ingredient.keyword": "(\".*)"
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+
 
 ##### Create an ingest node pipeline to replace the triple quotes with single quotes. ###
 
-PUT _ingest/pipeline/triplequotes
+PUT _ingest/pipeline/doublequotes
 {
   "processors": [
     {
       "gsub": {
         "field": "ingredient",
         "pattern": """"(.*?)""",
-        "replacement": "'"
+        "replacement": ""
       }}]}
 
 # unit test  
-POST _ingest/pipeline/triplequotes/_simulate
+POST _ingest/pipeline/doublequotes/_simulate
 {
   "docs": [
     {
@@ -163,6 +249,20 @@ POST _ingest/pipeline/triplequotes/_simulate
       "_source": {
         "ingredient": """shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)""",
         "tags": 2342
+      }
+    },
+    {
+      "_index": "recipes",
+      "_id": "id2",
+      "_source": {
+        "ingredient": """"shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)"""
+      }
+    },
+    {
+      "_index": "recipes",
+      "_id": "id2",
+      "_source": {
+        "ingredient": """""shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)"""
       }
     }
   ]
@@ -175,7 +275,7 @@ PUT _ingest/pipeline/elser_clean_recipes
   "processors": [
     {
       "pipeline": {
-        "name": "triplequotes"
+        "name": "doublequotes"
 
       },
       "inference": {
@@ -210,7 +310,7 @@ POST _ingest/pipeline/elser_clean_recipes/_simulate
       "_id": "id",
       "_source": {
         "ingredient":
-    """shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)"""
+    """"shredded cheese, and even some cilantro for a great-tasting breakfast burrito that will keep your appetite curbed all day long.","prep: 15 mins,cook: 5 mins,total: 20 mins,Servings: 2,Yield: 2 burritos","2 (10 inch) flour tortillas + 1 tablespoon butter + 4 medium eggs + 1 cup shredded mild Cheddar cheese + 1 Hass avocado - peeled, pitted, and sliced + 1 small tomato, chopped + 1 small bunch fresh cilantro, chopped, or to taste (Optional) + 1 pinch salt and ground black pepper to taste + 1 dash hot sauce, or to taste (Optional)"""
       }},
       {"_index": "recipes",
       "_id": "id",
@@ -220,9 +320,7 @@ POST _ingest/pipeline/elser_clean_recipes/_simulate
 }
 
 
-GET _cat/indices?s=i
-
-#WARNING = the next step takes approximately 25-35 minutes
+#WARNING = takes approximately 25-30 minutes
 
 #reindex recipes into an index called recipes_embeddings
 # Be sure to copy the task number 
@@ -244,27 +342,29 @@ POST _reindex?wait_for_completion=false&requests_per_second=-1&timeout=60m
 
 GET _tasks/< paste task number here >
 
-GET _tasks/bjf5MiiuSFq9u4mkNkvi0A:9094102
 
-#You can monitor documents processed under Kibana -> Machine Learning -> Trained Models -> .elser_model_2_linux-x86_64 -> open carat  ->  Stats  -> Inference count
+#for example
+#LAV3l8oZTmaR9p8VUVqO3g:373447
 
+GET _tasks/LAV3l8oZTmaR9p8VUVqO3g:373447
 
+#If needed, you can remove the recipes_embeddings index like this.
 #DELETE recipes_embeddings
 
-#examine
+#Let's examine the results.
 
-GET _cat/indices?s=i
+GET _cat/indices?v&s=i
 
 GET recipes_embeddings/_search
-#ml field makes this difficult to examine
+#ml.tokens field makes this awkward
 
 GET recipes_embeddings/_search
 { "_source": { "excludes": "ml"} }
 
 GET recipes_embeddings/_count
-#4807 documents
+#4808 documents
 
-#finding the "groups" of recipes to query
+#finding the "groups" to query
 GET recipes_embeddings/_search?size=0
 {
   "aggs": {
@@ -276,7 +376,7 @@ GET recipes_embeddings/_search?size=0
     }
   }
 }
-#how many buckets of groups are there?
+#how many buckets are there?
 GET recipes_embeddings/_search
 {
   "size": 0, 
@@ -292,7 +392,6 @@ GET recipes_embeddings/_search
 #174 buckets
 
 
-#A way to just look at the group field for each document
 GET recipes_embeddings/_search?size=1000&_source=group
 
 
@@ -312,11 +411,9 @@ GET recipes_embeddings/_search?size=1000&_source=group
 
 
 
-#Let's run queries for certain recipes with ELSER and without ELSER to compare results. 
-
 
 #Old Fashioned -  bourbon cocktail
-/*   -- Old Fashioned Recipe --
+/*
     1. Add one or two cherries to an old Old Fashioned glass and lightly mash with a muddler.
     2. Take orange peel and rub around the inside of the glass rim, then add peel to the cherries.
     3. Add ice cubes, rye whiskey, simple sugar, and bitters.
@@ -326,12 +423,10 @@ GET recipes_embeddings/_search?size=1000&_source=group
 
 
 #without ELSER
-# searching for "old fashion" in either the summary or name fields. Also to find the good recipes, looking for "delicious" or "sensational" in summary field.
-
 GET recipes_embeddings/_search
 {
   "_source": {
-    "excludes": "ml", "includes": ["name","group","summary"]},
+    "excludes": "ml", "includes": ["name","group","summary","ingredient"]},
   "query": {
     "bool": {
       "should": [ { "wildcard": { "group": {"value": "drinks*" }}},
@@ -341,10 +436,7 @@ GET recipes_embeddings/_search
             "query": "old fashion",
             "fields": [
               "summary",
-              "name"
-            ]
-          }
-        },
+              "name"]}},
         {
           "match": {
             "summary": "delicious sensational"
@@ -354,14 +446,13 @@ GET recipes_embeddings/_search
     }
   }
 }
+#pretty bad results in top 10
+# none are drinks (even though we searched the drinks* group)
+# "good old fashion meals and dishes... not what we are after"
 
-# If we look at the "hits" array, there are some pretty bad results in top 10. 
-# None are even drinks (even though we searched the drinks* group). Instead, we see a lot of recipes that use the phrase "old fashioned" with a little different meaning than what we were thinking (like old-fashion peach cobbler, for example).
 
 
-
-#with ELSER - Excellent results!
-
+#with ELSER - excellent results!
 GET recipes_embeddings/_search
 {
   "_source": {
@@ -374,8 +465,7 @@ GET recipes_embeddings/_search
         "bool": {
           "should": [
             {
-              "wildcard": {
-                "group": {"value": "drinks*"}}},
+              "wildcard": {"group": {"value": "drinks*"}}},
             {
               "multi_match": {
                 "query": "old fashioned",
@@ -401,7 +491,7 @@ GET recipes_embeddings/_search
     }
   }
 }
-#All are alcoholic drinks starting with an actual Old Fashion cocktail beverage. 
+#all are adult drinks and a couple start with "Old Fashion"
 
 
 
@@ -453,7 +543,7 @@ GET recipes_embeddings/_search
     }
   }
 }
-#pretty bad results in the top 5: port tenderloin, Spanish sauce, carrot salad, .... 
+#pretty bad results in the top 5: port tenderloin, Spanish sauce, carrot salad, ....   Nothing with shrimp.
 
 #with ELSER
 GET recipes_embeddings/_search
@@ -482,12 +572,12 @@ GET recipes_embeddings/_search
                   "name^2"
                 ]
               }
-            },
+            }/*,
             {
               "match": {
                 "summary": "tasty delightful"
               }
-            }
+            }*/
           ]
         }
       }
@@ -497,7 +587,7 @@ GET recipes_embeddings/_search
         "text_expansion": {
           "ml.tokens": {
             "model_id": "elser_model",
-            "model_text": "main tempura shrimp tasty delightful"
+            "model_text": "tempura shrimp"
           }
         }
       }
@@ -510,7 +600,7 @@ GET recipes_embeddings/_search
     }
   }
 }
-#much better results including:  Shrimp with Pasta, Shrimp Scampi, Penne with Shrimp, and Prawns Fried.   Notice nowhere in our searches did we specify "prawns."
+#much better in the top 5:  Shrimp with Pasta, Shrimp Scampis, Penne with Shrimp, Grilled Scampi, Shrimp Quiche
 
 
 
@@ -556,7 +646,7 @@ GET recipes_embeddings/_search
   }
 }
 # bad again in top 5: pork tenderloin, Med. sauce, carrot salad, lime chicken, ...
-
+#no spaghettis at all
 
 #with ELSER
 GET recipes_embeddings/_search?filter_path=hits.hits._source
@@ -585,12 +675,12 @@ GET recipes_embeddings/_search?filter_path=hits.hits._source
                   "name^2"
                 ]
               }
-            },
+            }/*,
             {
               "match": {
                 "summary": "tasty delightful"
               }
-            }
+            }*/
           ]
         }
       }
@@ -613,8 +703,8 @@ GET recipes_embeddings/_search?filter_path=hits.hits._source
     }
   }
 }
-# much improved again among the top hits: Penne with Shrimp (at least it's pasta - we did not specify penne), rice noodles, Spaghetti with Corned Beef, Spaghetti Aglio e Olio
-
+# much improved.  many ingredients have spaghetti or penne
+#again within the top : Pennes, pastas, spaghettis, 
 
 
 
@@ -651,8 +741,8 @@ GET recipes_embeddings/_search
     }
   }
 }
-# shakes,  Pistachios, banana bread, and crepes...? meh
-
+# shake and crepes...?
+#cannot find any ingredient with chocalate
 
 #with ELSER
 GET recipes_embeddings/_search
@@ -701,8 +791,8 @@ GET recipes_embeddings/_search
   }
 }
 # peppermint bark (obscure term for chocolate), 
-# Nanaimo bars (chocolate topped cookie), hot chocolate, chocolate muffins, cake balls where ingredient includes chocolate cake, Oreo truffles...    
-#Much improved results!
+#Nanaimo bars (chocolate topped cookie), hot chocolate, chocolate muffins, cake balls ingredient includes chocolate cake, Oreo truffles, etc
+#lots of ingredients with chocalate
 
 
 
@@ -739,6 +829,9 @@ GET recipes_embeddings/_count
 #310
 
 
+
+
+
 #look for "Fish Sandwich"   in everyday-cooking*
 
 #without ELSER
@@ -773,8 +866,7 @@ GET recipes_embeddings/_search
   }
 }
 # None!
-#wow, no hits at all for 'fish sandwich'...?
-
+#wow, no hits at all...? 
 
 #add embedding search with ELSER
 GET recipes_embeddings/_search
@@ -827,8 +919,8 @@ GET recipes_embeddings/_search
   }
 }
 
-#do a "find" on the right-hand-side for "sandwich". So many!
-# tuna patties, tuna salads,  even a Vietnamese Baguette (fish sauce), and a Catfish Po Boy!
+#do a "find" on the right-hand-side for "sandwich".
+# tuna patties, tuna salads - lots of fish that are or almost are  sandwiches
 
 
 
@@ -882,14 +974,14 @@ GET recipes_embeddings/_search
 GET recipes_embeddings/_search
 {
   "_source": {
-    "excludes": "ml", "includes": ["name","group","summary"]},
+    "excludes": "ml", "includes": ["name","group","summary","ingredient"]},
   "query": {
     "bool": {
       "should": [ { "wildcard": { "group": {"value": "main*" }}},
         {
           "multi_match": {
             //"type": "phrase", 
-            "query": "tenderloin steak salt pepper",
+            "query": "tenderloin steak Chateaubriand beef",
             "fields": [
               "ingredient",
               "name^2"
@@ -914,24 +1006,18 @@ GET recipes_embeddings/_search
 # salt and pepper fries, salt bread, Pork Tenderloin
 
 
-
 #with ELSER
 GET recipes_embeddings/_search
 {
   "_source": {
-    "excludes": "ml", "includes": ["name","group","summary"]},
+    "excludes": "ml", "includes": ["name","group","summary","ingredient"]},
     "sub_searches": [
       {
         "query": {
           "bool": {
             "should": [
               {
-                "wildcard": {
-                  "group": {
-                    "value": "main*"
-                  }
-                }
-              },
+                "wildcard": {"group": {"value": "main*"}}},
               {
                 "multi_match": {
                   "query": "tenderloin steak Chateaubriand beef",
@@ -970,18 +1056,3 @@ GET recipes_embeddings/_search
       }
 }
 # A lot more actual steaks.
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
